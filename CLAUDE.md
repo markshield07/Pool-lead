@@ -2,6 +2,29 @@
 
 An agentic workflow system that helps pool cleaning businesses capture, qualify, and book leads automatically.
 
+## Quick Start
+
+1. **Setup**: Follow [docs/SETUP.md](docs/SETUP.md) for complete installation guide
+2. **Google Sheets**: Create your CRM using [templates/google-sheets-setup.md](templates/google-sheets-setup.md)
+3. **Import Workflows**: Load the JSON files from `workflows/` into n8n
+4. **Configure**: Update credentials and activate workflows
+
+## Project Structure
+
+```
+Pool-lead/
+├── CLAUDE.md                              # This file - project documentation
+├── workflows/
+│   ├── inbound-sms-handler.json          # Main workflow: SMS → Claude → Reply
+│   └── followup-scheduler.json           # Cron: Auto follow-ups (Day 1, 3, 7)
+├── prompts/
+│   └── pool-agent-system-prompt.txt      # Claude system prompt
+├── templates/
+│   └── google-sheets-setup.md            # Google Sheets setup guide
+└── docs/
+    └── SETUP.md                          # Complete installation guide
+```
+
 ## Project Overview
 
 **Purpose**: 24/7 Lead Capture → Qualification → Booking Agent

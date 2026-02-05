@@ -1,0 +1,432 @@
+{
+  "name": "Pool Lead - Follow-up Scheduler",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "={{ $credentials.sheetId }}"
+        },
+        "sheetName": "Leads",
+        "options": {
+          "returnAllMatches": true
+        }
+      },
+      "id": "get-all-leads",
+      "name": "Get All Leads",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [450, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_CREDENTIAL_ID",
+          "name": "Google Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter leads that need follow-up\nconst now = new Date();\nconst leads = $input.all();\n\nconst leadsNeedingFollowup = leads.filter(item => {\n  const lead = item.json;\n  \n  // Skip if already booked or unqualified\n  if (lead.status === 'booked' || lead.status === 'unqualified' || lead.status === 'handoff') {\n    return false;\n  }\n  \n  // Check if follow-up is due\n  if (!lead.next_followup_at) {\n    return false;\n  }\n  \n  const followupDate = new Date(lead.next_followup_at);\n  return followupDate <= now;\n});\n\nreturn leadsNeedingFollowup;"
+      },
+      "id": "filter-leads",
+      "name": "Filter Leads Needing Follow-up",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.lead_id }}",
+              "value2": ""
+            }
+          ]
+        }
+      },
+      "id": "check-has-leads",
+      "name": "Has Leads?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "={{ $credentials.sheetId }}"
+        },
+        "sheetName": "Config",
+        "options": {
+          "returnAllMatches": true
+        }
+      },
+      "id": "get-config",
+      "name": "Get Config",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1050, 200],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_CREDENTIAL_ID",
+          "name": "Google Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "={{ $credentials.sheetId }}"
+        },
+        "sheetName": "Messages",
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "lead_id",
+              "lookupValue": "={{ $json.lead_id }}"
+            }
+          ]
+        },
+        "options": {
+          "returnAllMatches": true
+        }
+      },
+      "id": "get-message-history",
+      "name": "Get Message History",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1050, 400],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_CREDENTIAL_ID",
+          "name": "Google Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare follow-up request for Claude\nconst lead = $('Filter Leads Needing Follow-up').item.json;\nconst messages = $('Get Message History').all().map(item => item.json);\nconst configRows = $('Get Config').all().map(item => item.json);\n\n// Convert config rows to object\nconst config = {};\nconfigRows.forEach(row => {\n  config[row.key] = row.value;\n});\n\n// Calculate which follow-up this is (Day 1, 3, or 7)\nconst lastFollowupCount = messages.filter(m => \n  m.direction === 'out' && m.text.includes('checking in')\n).length;\n\nlet followupDay = 'Day 1';\nif (lastFollowupCount === 1) followupDay = 'Day 3';\nif (lastFollowupCount >= 2) followupDay = 'Day 7 (final)';\n\nconst userMessage = `\nGENERATE A FOLLOW-UP MESSAGE.\n\nLEAD RECORD:\n${JSON.stringify(lead, null, 2)}\n\nCONFIG:\n${JSON.stringify(config, null, 2)}\n\nFOLLOW-UP STAGE: ${followupDay}\n\nRECENT MESSAGES:\n${JSON.stringify(messages.slice(-5), null, 2)}\n\nRules:\n- Keep it short and friendly (1-2 sentences)\n- Don't be pushy\n- Reference any context from previous conversation if relevant\n- ${followupDay === 'Day 7 (final)' ? 'This is the final follow-up, keep it light' : 'Gently remind about availability'}\n\nRespond with valid JSON only, with just reply_text field.\n`;\n\nreturn {\n  lead,\n  config,\n  userMessage,\n  followupDay,\n  lastFollowupCount\n};"
+      },
+      "id": "prepare-followup-request",
+      "name": "Prepare Follow-up Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $credentials.anthropicApiKey }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-20250514\",\n  \"max_tokens\": 256,\n  \"system\": \"You are a friendly follow-up assistant for a pool cleaning company. Generate short, non-pushy follow-up messages. Output valid JSON only with a reply_text field.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.userMessage) }}\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "call-claude-followup",
+      "name": "Call Claude API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1450, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ANTHROPIC_CREDENTIAL_ID",
+          "name": "Anthropic API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Claude's follow-up response\nconst response = $input.item.json;\nconst preparedData = $('Prepare Follow-up Request').item.json;\n\nlet replyText;\n\ntry {\n  const text = response.content[0].text;\n  const parsed = JSON.parse(text);\n  replyText = parsed.reply_text;\n} catch (e) {\n  // Fallback messages based on follow-up day\n  const fallbacks = {\n    'Day 1': \"Just checking in — happy to get you a quote or answer questions about pool service.\",\n    'Day 3': \"We have a few openings this week if you want to get started with pool cleaning.\",\n    'Day 7 (final)': \"No pressure — just let me know if you'd like help with your pool. We're here when you're ready!\"\n  };\n  replyText = fallbacks[preparedData.followupDay] || fallbacks['Day 1'];\n}\n\n// Calculate next follow-up date\nlet nextFollowupAt = null;\nif (preparedData.followupDay === 'Day 1') {\n  // Next follow-up in 2 days (Day 3)\n  nextFollowupAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();\n} else if (preparedData.followupDay === 'Day 3') {\n  // Next follow-up in 4 days (Day 7)\n  nextFollowupAt = new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString();\n}\n// Day 7 = no more follow-ups (nextFollowupAt stays null)\n\nreturn {\n  reply_text: replyText,\n  lead: preparedData.lead,\n  config: preparedData.config,\n  next_followup_at: nextFollowupAt,\n  followup_complete: preparedData.followupDay === 'Day 7 (final)'\n};"
+      },
+      "id": "parse-followup-response",
+      "name": "Parse Follow-up Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "from": "={{ $json.config.twilio_number }}",
+        "to": "={{ $json.lead.phone }}",
+        "message": "={{ $json.reply_text }}"
+      },
+      "id": "send-followup-sms",
+      "name": "Send Follow-up SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1850, 300],
+      "credentials": {
+        "twilioApi": {
+          "id": "TWILIO_CREDENTIAL_ID",
+          "name": "Twilio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "={{ $credentials.sheetId }}"
+        },
+        "sheetName": "Messages",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "lead_id": "={{ $json.lead.lead_id }}",
+            "timestamp": "={{ new Date().toISOString() }}",
+            "direction": "out",
+            "text": "={{ $json.reply_text }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "log-followup-message",
+      "name": "Log Follow-up Message",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [2050, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_CREDENTIAL_ID",
+          "name": "Google Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "={{ $credentials.sheetId }}"
+        },
+        "sheetName": "Leads",
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "lead_id",
+              "lookupValue": "={{ $json.lead.lead_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "last_message_at": "={{ new Date().toISOString() }}",
+            "next_followup_at": "={{ $json.next_followup_at || '' }}",
+            "status": "={{ $json.followup_complete ? 'unqualified' : $json.lead.status }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "update-lead-followup",
+      "name": "Update Lead",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [2250, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_CREDENTIAL_ID",
+          "name": "Google Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "no-leads",
+      "name": "No Leads to Follow Up",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1050, 500]
+    }
+  ],
+  "connections": {
+    "Every Hour": {
+      "main": [
+        [
+          {
+            "node": "Get All Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get All Leads": {
+      "main": [
+        [
+          {
+            "node": "Filter Leads Needing Follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Leads Needing Follow-up": {
+      "main": [
+        [
+          {
+            "node": "Has Leads?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Leads?": {
+      "main": [
+        [
+          {
+            "node": "Get Config",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Message History",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Leads to Follow Up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Config": {
+      "main": [
+        [
+          {
+            "node": "Prepare Follow-up Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Message History": {
+      "main": [
+        [
+          {
+            "node": "Prepare Follow-up Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Follow-up Request": {
+      "main": [
+        [
+          {
+            "node": "Call Claude API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Claude API": {
+      "main": [
+        [
+          {
+            "node": "Parse Follow-up Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Follow-up Response": {
+      "main": [
+        [
+          {
+            "node": "Send Follow-up SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Follow-up SMS": {
+      "main": [
+        [
+          {
+            "node": "Log Follow-up Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Follow-up Message": {
+      "main": [
+        [
+          {
+            "node": "Update Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}
