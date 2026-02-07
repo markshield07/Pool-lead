@@ -5,7 +5,7 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "pool-lead-sms",
-        "responseMode": "responseNode",
+        "responseMode": "lastNode",
         "options": {}
       },
       "name": "Twilio Webhook",
@@ -15,89 +15,23 @@
     },
     {
       "parameters": {
-        "operation": "lookup",
-        "sheetId": "YOUR_SHEET_ID",
-        "range": "Leads!A:M",
-        "lookupColumn": "phone",
-        "lookupValue": "={{ $json.From }}",
-        "options": {}
-      },
-      "name": "Lookup Lead",
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 2,
-      "position": [450, 300]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "string": [
-            {
-              "value1": "={{ $json.phone }}",
-              "operation": "isNotEmpty"
-            }
-          ]
-        }
-      },
-      "name": "Lead Exists?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [650, 300]
-    },
-    {
-      "parameters": {
-        "operation": "append",
-        "sheetId": "YOUR_SHEET_ID",
-        "range": "Leads!A:M",
-        "options": {},
-        "fieldsUi": {
-          "values": [
-            { "fieldId": "lead_id", "fieldValue": "={{ Date.now() }}" },
-            { "fieldId": "phone", "fieldValue": "={{ $node['Twilio Webhook'].json.From }}" },
-            { "fieldId": "status", "fieldValue": "new" },
-            { "fieldId": "last_message_at", "fieldValue": "={{ new Date().toISOString() }}" }
-          ]
-        }
-      },
-      "name": "Create New Lead",
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 2,
-      "position": [850, 400]
-    },
-    {
-      "parameters": {
         "operation": "append",
         "sheetId": "YOUR_SHEET_ID",
         "range": "Messages!A:D",
         "options": {},
         "fieldsUi": {
           "values": [
-            { "fieldId": "lead_id", "fieldValue": "={{ $json.lead_id || $node['Create New Lead'].json.lead_id }}" },
+            { "fieldId": "lead_id", "fieldValue": "={{ $json.From }}" },
             { "fieldId": "timestamp", "fieldValue": "={{ new Date().toISOString() }}" },
             { "fieldId": "direction", "fieldValue": "in" },
-            { "fieldId": "text", "fieldValue": "={{ $node['Twilio Webhook'].json.Body }}" }
+            { "fieldId": "text", "fieldValue": "={{ $json.Body }}" }
           ]
         }
       },
       "name": "Log Inbound Message",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 2,
-      "position": [1050, 300]
-    },
-    {
-      "parameters": {
-        "operation": "lookup",
-        "sheetId": "YOUR_SHEET_ID",
-        "range": "Messages!A:D",
-        "lookupColumn": "lead_id",
-        "lookupValue": "={{ $json.lead_id }}",
-        "options": {
-          "returnAllMatches": true
-        }
-      },
-      "name": "Get Message History",
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 2,
-      "position": [1250, 300]
+      "position": [450, 300]
     },
     {
       "parameters": {
@@ -108,16 +42,16 @@
       "name": "Get Config",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 2,
-      "position": [1250, 500]
+      "position": [650, 300]
     },
     {
       "parameters": {
-        "functionCode": "// Prepare data for Claude API call\nconst webhook = $node['Twilio Webhook'].json;\nconst lead = $node['Lookup Lead'].json.phone ? $node['Lookup Lead'].json : $node['Create New Lead'].json;\nconst messages = $items('Get Message History');\nconst configItems = $items('Get Config');\n\n// Convert config to object\nconst config = {};\nconfigItems.forEach(item => {\n  config[item.json.key] = item.json.value;\n});\n\n// Get last 10 messages\nconst recentMessages = messages.slice(-10).map(m => ({\n  role: m.json.direction === 'in' ? 'user' : 'assistant',\n  content: m.json.text\n}));\n\n// System prompt\nconst systemPrompt = `You are a scheduling assistant for a local pool cleaning company.\nGoal: convert inquiries into booked appointments or qualified leads.\n\nRules:\n- Be brief, friendly, professional. 1-2 short messages max.\n- Ask only one question at a time unless it's a multiple-choice list.\n- Always check service city first. If outside service area: politely decline.\n- Give price ranges only (unless config explicitly says exact pricing).\n- If uncertain, confused, or customer requests a human: set intent=handoff.\n- Output MUST be valid JSON only (no extra text).\n\nDecide next best action and return JSON with:\nreply_text, lead_status, intent, fields_extracted, missing_fields, booking_request, handoff_reason.`;\n\nconst userMessage = `CURRENT LEAD: ${JSON.stringify(lead)}\nCONFIG: ${JSON.stringify(config)}\nHISTORY: ${JSON.stringify(recentMessages)}\nLATEST MESSAGE: \"${webhook.Body}\"\n\nRespond with valid JSON only.`;\n\nreturn [{\n  json: {\n    lead,\n    config,\n    systemPrompt,\n    userMessage,\n    phone: webhook.From\n  }\n}];"
+        "functionCode": "const webhook = $node['Twilio Webhook'].json;\nconst configItems = $items('Get Config');\n\nconst config = {};\nconfigItems.forEach(item => {\n  config[item.json.key] = item.json.value;\n});\n\nconst systemPrompt = `You are a scheduling assistant for a local pool cleaning company called ${config.business_name || 'our company'}.\nGoal: convert inquiries into booked appointments or qualified leads.\n\nService areas: ${config.service_cities || 'local area'}\nPricing: ${config.pricing_weekly_range || '$140-180/month'}\n\nRules:\n- Be brief, friendly, professional. 1-2 short sentences max.\n- Ask only one question at a time.\n- Always check service city first. If outside service area: politely decline.\n- Give price ranges only.\n- If uncertain or customer requests human: say you will have someone call them.\n- Output valid JSON only with this format: {\"reply_text\": \"your message here\"}`;\n\nconst userMessage = `Customer phone: ${webhook.From}\\nCustomer message: \"${webhook.Body}\"\\n\\nRespond with JSON only: {\"reply_text\": \"your reply\"}`;\n\nreturn [{\n  json: {\n    config,\n    systemPrompt,\n    userMessage,\n    phone: webhook.From,\n    inboundMessage: webhook.Body\n  }\n}];"
       },
-      "name": "Prepare Claude Request",
+      "name": "Prepare Request",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [1450, 300]
+      "position": [850, 300]
     },
     {
       "parameters": {
@@ -134,40 +68,21 @@
             { "name": "content-type", "value": "application/json" }
           ]
         },
-        "bodyParametersJson": "={\n  \"model\": \"claude-sonnet-4-20250514\",\n  \"max_tokens\": 1024,\n  \"system\": {{ JSON.stringify($json.systemPrompt) }},\n  \"messages\": [{\"role\": \"user\", \"content\": {{ JSON.stringify($json.userMessage) }}}]\n}"
+        "bodyParametersJson": "={\n  \"model\": \"claude-sonnet-4-20250514\",\n  \"max_tokens\": 256,\n  \"system\": {{ JSON.stringify($json.systemPrompt) }},\n  \"messages\": [{\"role\": \"user\", \"content\": {{ JSON.stringify($json.userMessage) }}}]\n}"
       },
-      "name": "Call Claude API",
+      "name": "Call Claude",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [1650, 300]
+      "position": [1050, 300]
     },
     {
       "parameters": {
-        "functionCode": "// Parse Claude's JSON response\nconst response = $json;\nconst prepData = $node['Prepare Claude Request'].json;\nlet claudeOutput;\n\ntry {\n  const text = response.content[0].text;\n  claudeOutput = JSON.parse(text);\n} catch (e) {\n  claudeOutput = {\n    reply_text: \"Thanks for reaching out! Let me connect you with someone who can help.\",\n    lead_status: \"handoff\",\n    intent: \"handoff\",\n    fields_extracted: {},\n    missing_fields: [],\n    booking_request: null,\n    handoff_reason: \"Failed to parse AI response\"\n  };\n}\n\nreturn [{\n  json: {\n    ...claudeOutput,\n    lead: prepData.lead,\n    phone: prepData.phone,\n    config: prepData.config\n  }\n}];"
+        "functionCode": "const response = $json;\nconst prepData = $node['Prepare Request'].json;\nlet replyText;\n\ntry {\n  const text = response.content[0].text;\n  const parsed = JSON.parse(text);\n  replyText = parsed.reply_text;\n} catch (e) {\n  replyText = \"Thanks for reaching out! Someone from our team will get back to you shortly.\";\n}\n\nreturn [{\n  json: {\n    reply_text: replyText,\n    phone: prepData.phone,\n    config: prepData.config\n  }\n}];"
       },
-      "name": "Parse Claude Response",
+      "name": "Parse Response",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [1850, 300]
-    },
-    {
-      "parameters": {
-        "operation": "update",
-        "sheetId": "YOUR_SHEET_ID",
-        "range": "Leads!A:M",
-        "key": "lead_id",
-        "fieldsUi": {
-          "values": [
-            { "fieldId": "status", "fieldValue": "={{ $json.lead_status }}" },
-            { "fieldId": "last_message_at", "fieldValue": "={{ new Date().toISOString() }}" }
-          ]
-        },
-        "options": {}
-      },
-      "name": "Update Lead",
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 2,
-      "position": [2050, 300]
+      "position": [1250, 300]
     },
     {
       "parameters": {
@@ -177,17 +92,17 @@
         "options": {},
         "fieldsUi": {
           "values": [
-            { "fieldId": "lead_id", "fieldValue": "={{ $json.lead.lead_id }}" },
+            { "fieldId": "lead_id", "fieldValue": "={{ $json.phone }}" },
             { "fieldId": "timestamp", "fieldValue": "={{ new Date().toISOString() }}" },
             { "fieldId": "direction", "fieldValue": "out" },
             { "fieldId": "text", "fieldValue": "={{ $json.reply_text }}" }
           ]
         }
       },
-      "name": "Log Outbound Message",
+      "name": "Log Outbound",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 2,
-      "position": [2250, 300]
+      "position": [1450, 300]
     },
     {
       "parameters": {
@@ -195,67 +110,50 @@
         "to": "={{ $json.phone }}",
         "message": "={{ $json.reply_text }}"
       },
-      "name": "Send SMS Reply",
+      "name": "Send SMS",
       "type": "n8n-nodes-base.twilio",
       "typeVersion": 1,
-      "position": [2450, 300]
+      "position": [1650, 300]
     },
     {
       "parameters": {
-        "respondWith": "text",
-        "responseBody": "OK"
+        "values": {
+          "string": [
+            { "name": "status", "value": "ok" }
+          ]
+        },
+        "options": {}
       },
-      "name": "Respond to Webhook",
-      "type": "n8n-nodes-base.respondToWebhook",
+      "name": "Response",
+      "type": "n8n-nodes-base.set",
       "typeVersion": 1,
-      "position": [2650, 300]
+      "position": [1850, 300]
     }
   ],
   "connections": {
     "Twilio Webhook": {
-      "main": [[{ "node": "Lookup Lead", "type": "main", "index": 0 }]]
-    },
-    "Lookup Lead": {
-      "main": [[{ "node": "Lead Exists?", "type": "main", "index": 0 }]]
-    },
-    "Lead Exists?": {
-      "main": [
-        [{ "node": "Log Inbound Message", "type": "main", "index": 0 }],
-        [{ "node": "Create New Lead", "type": "main", "index": 0 }]
-      ]
-    },
-    "Create New Lead": {
       "main": [[{ "node": "Log Inbound Message", "type": "main", "index": 0 }]]
     },
     "Log Inbound Message": {
-      "main": [
-        [{ "node": "Get Message History", "type": "main", "index": 0 }],
-        [{ "node": "Get Config", "type": "main", "index": 0 }]
-      ]
-    },
-    "Get Message History": {
-      "main": [[{ "node": "Prepare Claude Request", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Get Config", "type": "main", "index": 0 }]]
     },
     "Get Config": {
-      "main": [[{ "node": "Prepare Claude Request", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Prepare Request", "type": "main", "index": 0 }]]
     },
-    "Prepare Claude Request": {
-      "main": [[{ "node": "Call Claude API", "type": "main", "index": 0 }]]
+    "Prepare Request": {
+      "main": [[{ "node": "Call Claude", "type": "main", "index": 0 }]]
     },
-    "Call Claude API": {
-      "main": [[{ "node": "Parse Claude Response", "type": "main", "index": 0 }]]
+    "Call Claude": {
+      "main": [[{ "node": "Parse Response", "type": "main", "index": 0 }]]
     },
-    "Parse Claude Response": {
-      "main": [[{ "node": "Update Lead", "type": "main", "index": 0 }]]
+    "Parse Response": {
+      "main": [[{ "node": "Log Outbound", "type": "main", "index": 0 }]]
     },
-    "Update Lead": {
-      "main": [[{ "node": "Log Outbound Message", "type": "main", "index": 0 }]]
+    "Log Outbound": {
+      "main": [[{ "node": "Send SMS", "type": "main", "index": 0 }]]
     },
-    "Log Outbound Message": {
-      "main": [[{ "node": "Send SMS Reply", "type": "main", "index": 0 }]]
-    },
-    "Send SMS Reply": {
-      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    "Send SMS": {
+      "main": [[{ "node": "Response", "type": "main", "index": 0 }]]
     }
   },
   "settings": {
