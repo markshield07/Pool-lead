@@ -5,9 +5,9 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "pool-lead-sms",
+        "responseMode": "responseNode",
         "options": {}
       },
-      "id": "webhook-trigger",
       "name": "Twilio Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
@@ -15,47 +15,29 @@
     },
     {
       "parameters": {
-        "operation": "read",
-        "documentId": {
-          "__rl": true,
-          "mode": "list",
-          "value": "={{ $credentials.sheetId }}"
-        },
-        "sheetName": "Leads",
-        "filtersUI": {
-          "values": [
-            {
-              "lookupColumn": "phone",
-              "lookupValue": "={{ $json.From }}"
-            }
-          ]
-        },
+        "operation": "lookup",
+        "sheetId": "YOUR_SHEET_ID",
+        "range": "Leads!A:M",
+        "lookupColumn": "phone",
+        "lookupValue": "={{ $json.From }}",
         "options": {}
       },
-      "id": "lookup-lead",
       "name": "Lookup Lead",
       "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4,
-      "position": [450, 300],
-      "credentials": {
-        "googleSheetsOAuth2Api": {
-          "id": "GOOGLE_CREDENTIAL_ID",
-          "name": "Google Sheets"
-        }
-      }
+      "typeVersion": 2,
+      "position": [450, 300]
     },
     {
       "parameters": {
         "conditions": {
-          "boolean": [
+          "string": [
             {
               "value1": "={{ $json.phone }}",
-              "value2": ""
+              "operation": "isNotEmpty"
             }
           ]
         }
       },
-      "id": "check-lead-exists",
       "name": "Lead Exists?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
@@ -64,552 +46,219 @@
     {
       "parameters": {
         "operation": "append",
-        "documentId": {
-          "__rl": true,
-          "mode": "list",
-          "value": "={{ $credentials.sheetId }}"
-        },
-        "sheetName": "Leads",
-        "columns": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "lead_id": "={{ $runIndex }}_{{ Date.now() }}",
-            "phone": "={{ $('Twilio Webhook').item.json.From }}",
-            "name": "",
-            "city": "",
-            "address": "",
-            "pool_type": "",
-            "pool_size": "",
-            "pool_condition": "",
-            "service_type": "",
-            "status": "new",
-            "last_message_at": "={{ new Date().toISOString() }}",
-            "next_followup_at": "",
-            "notes": ""
-          }
-        },
-        "options": {}
+        "sheetId": "YOUR_SHEET_ID",
+        "range": "Leads!A:M",
+        "options": {},
+        "fieldsUi": {
+          "values": [
+            { "fieldId": "lead_id", "fieldValue": "={{ Date.now() }}" },
+            { "fieldId": "phone", "fieldValue": "={{ $node['Twilio Webhook'].json.From }}" },
+            { "fieldId": "status", "fieldValue": "new" },
+            { "fieldId": "last_message_at", "fieldValue": "={{ new Date().toISOString() }}" }
+          ]
+        }
       },
-      "id": "create-lead",
       "name": "Create New Lead",
       "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4,
-      "position": [850, 400],
-      "credentials": {
-        "googleSheetsOAuth2Api": {
-          "id": "GOOGLE_CREDENTIAL_ID",
-          "name": "Google Sheets"
-        }
-      }
+      "typeVersion": 2,
+      "position": [850, 400]
     },
     {
       "parameters": {
         "operation": "append",
-        "documentId": {
-          "__rl": true,
-          "mode": "list",
-          "value": "={{ $credentials.sheetId }}"
-        },
-        "sheetName": "Messages",
-        "columns": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "lead_id": "={{ $json.lead_id || $('Create New Lead').item.json.lead_id }}",
-            "timestamp": "={{ new Date().toISOString() }}",
-            "direction": "in",
-            "text": "={{ $('Twilio Webhook').item.json.Body }}"
-          }
-        },
-        "options": {}
+        "sheetId": "YOUR_SHEET_ID",
+        "range": "Messages!A:D",
+        "options": {},
+        "fieldsUi": {
+          "values": [
+            { "fieldId": "lead_id", "fieldValue": "={{ $json.lead_id || $node['Create New Lead'].json.lead_id }}" },
+            { "fieldId": "timestamp", "fieldValue": "={{ new Date().toISOString() }}" },
+            { "fieldId": "direction", "fieldValue": "in" },
+            { "fieldId": "text", "fieldValue": "={{ $node['Twilio Webhook'].json.Body }}" }
+          ]
+        }
       },
-      "id": "log-inbound-message",
       "name": "Log Inbound Message",
       "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4,
-      "position": [1050, 300],
-      "credentials": {
-        "googleSheetsOAuth2Api": {
-          "id": "GOOGLE_CREDENTIAL_ID",
-          "name": "Google Sheets"
-        }
-      }
+      "typeVersion": 2,
+      "position": [1050, 300]
     },
     {
       "parameters": {
-        "operation": "read",
-        "documentId": {
-          "__rl": true,
-          "mode": "list",
-          "value": "={{ $credentials.sheetId }}"
-        },
-        "sheetName": "Messages",
-        "filtersUI": {
-          "values": [
-            {
-              "lookupColumn": "lead_id",
-              "lookupValue": "={{ $json.lead_id }}"
-            }
-          ]
-        },
+        "operation": "lookup",
+        "sheetId": "YOUR_SHEET_ID",
+        "range": "Messages!A:D",
+        "lookupColumn": "lead_id",
+        "lookupValue": "={{ $json.lead_id }}",
         "options": {
           "returnAllMatches": true
         }
       },
-      "id": "get-message-history",
       "name": "Get Message History",
       "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4,
-      "position": [1250, 300],
-      "credentials": {
-        "googleSheetsOAuth2Api": {
-          "id": "GOOGLE_CREDENTIAL_ID",
-          "name": "Google Sheets"
-        }
-      }
+      "typeVersion": 2,
+      "position": [1250, 300]
     },
     {
       "parameters": {
-        "operation": "read",
-        "documentId": {
-          "__rl": true,
-          "mode": "list",
-          "value": "={{ $credentials.sheetId }}"
-        },
-        "sheetName": "Config",
-        "options": {
-          "returnAllMatches": true
-        }
+        "sheetId": "YOUR_SHEET_ID",
+        "range": "Config!A:B",
+        "options": {}
       },
-      "id": "get-config",
       "name": "Get Config",
       "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4,
-      "position": [1250, 500],
-      "credentials": {
-        "googleSheetsOAuth2Api": {
-          "id": "GOOGLE_CREDENTIAL_ID",
-          "name": "Google Sheets"
-        }
-      }
+      "typeVersion": 2,
+      "position": [1250, 500]
     },
     {
       "parameters": {
-        "jsCode": "// Prepare data for Claude API call\nconst webhook = $('Twilio Webhook').item.json;\nconst lead = $('Lookup Lead').item.json.phone ? $('Lookup Lead').item.json : $('Create New Lead').item.json;\nconst messages = $('Get Message History').all().map(item => item.json);\nconst configRows = $('Get Config').all().map(item => item.json);\n\n// Convert config rows to object\nconst config = {};\nconfigRows.forEach(row => {\n  config[row.key] = row.value;\n});\n\n// Get last 10 messages\nconst recentMessages = messages.slice(-10).map(m => ({\n  role: m.direction === 'in' ? 'user' : 'assistant',\n  content: m.text\n}));\n\n// Build the prompt\nconst userMessage = `\nCURRENT LEAD RECORD:\n${JSON.stringify(lead, null, 2)}\n\nCONFIG (business rules):\n${JSON.stringify(config, null, 2)}\n\nCONVERSATION HISTORY (last 10 messages):\n${JSON.stringify(recentMessages, null, 2)}\n\nLATEST INBOUND MESSAGE:\n\"${webhook.Body}\"\n\nRespond with valid JSON only.\n`;\n\nconst systemPrompt = `You are a scheduling assistant for a local pool cleaning company.\nGoal: convert inquiries into booked appointments or qualified leads.\n\nRules:\n- Be brief, friendly, professional. 1-2 short messages max.\n- Ask only one question at a time unless it's a multiple-choice list.\n- Always check service city first. If outside service area: politely decline.\n- Give price ranges only (unless config explicitly says exact pricing).\n- If uncertain, confused, or customer requests a human: set intent=handoff.\n- Output MUST be valid JSON only (no extra text).\n\nYou will receive:\n- config (service cities, price ranges, booking type, office hours)\n- last 10 messages\n- latest inbound message\n- current lead record\n\nDecide next best action and return JSON with:\nreply_text, lead_status, intent, fields_extracted, missing_fields, booking_request, handoff_reason.`;\n\nreturn {\n  lead,\n  config,\n  userMessage,\n  systemPrompt,\n  phone: webhook.From\n};"
+        "functionCode": "// Prepare data for Claude API call\nconst webhook = $node['Twilio Webhook'].json;\nconst lead = $node['Lookup Lead'].json.phone ? $node['Lookup Lead'].json : $node['Create New Lead'].json;\nconst messages = $items('Get Message History');\nconst configItems = $items('Get Config');\n\n// Convert config to object\nconst config = {};\nconfigItems.forEach(item => {\n  config[item.json.key] = item.json.value;\n});\n\n// Get last 10 messages\nconst recentMessages = messages.slice(-10).map(m => ({\n  role: m.json.direction === 'in' ? 'user' : 'assistant',\n  content: m.json.text\n}));\n\n// System prompt\nconst systemPrompt = `You are a scheduling assistant for a local pool cleaning company.\nGoal: convert inquiries into booked appointments or qualified leads.\n\nRules:\n- Be brief, friendly, professional. 1-2 short messages max.\n- Ask only one question at a time unless it's a multiple-choice list.\n- Always check service city first. If outside service area: politely decline.\n- Give price ranges only (unless config explicitly says exact pricing).\n- If uncertain, confused, or customer requests a human: set intent=handoff.\n- Output MUST be valid JSON only (no extra text).\n\nDecide next best action and return JSON with:\nreply_text, lead_status, intent, fields_extracted, missing_fields, booking_request, handoff_reason.`;\n\nconst userMessage = `CURRENT LEAD: ${JSON.stringify(lead)}\nCONFIG: ${JSON.stringify(config)}\nHISTORY: ${JSON.stringify(recentMessages)}\nLATEST MESSAGE: \"${webhook.Body}\"\n\nRespond with valid JSON only.`;\n\nreturn [{\n  json: {\n    lead,\n    config,\n    systemPrompt,\n    userMessage,\n    phone: webhook.From\n  }\n}];"
       },
-      "id": "prepare-claude-request",
       "name": "Prepare Claude Request",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
       "position": [1450, 300]
     },
     {
       "parameters": {
-        "method": "POST",
+        "requestMethod": "POST",
         "url": "https://api.anthropic.com/v1/messages",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "x-api-key",
-              "value": "={{ $credentials.anthropicApiKey }}"
-            },
-            {
-              "name": "anthropic-version",
-              "value": "2023-06-01"
-            },
-            {
-              "name": "content-type",
-              "value": "application/json"
-            }
+        "jsonParameters": true,
+        "options": {
+          "bodyContentType": "json"
+        },
+        "headerParametersUi": {
+          "parameter": [
+            { "name": "x-api-key", "value": "YOUR_CLAUDE_API_KEY" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
           ]
         },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-20250514\",\n  \"max_tokens\": 1024,\n  \"system\": {{ JSON.stringify($('Prepare Claude Request').item.json.systemPrompt) }},\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($('Prepare Claude Request').item.json.userMessage) }}\n    }\n  ]\n}",
-        "options": {}
+        "bodyParametersJson": "={\n  \"model\": \"claude-sonnet-4-20250514\",\n  \"max_tokens\": 1024,\n  \"system\": {{ JSON.stringify($json.systemPrompt) }},\n  \"messages\": [{\"role\": \"user\", \"content\": {{ JSON.stringify($json.userMessage) }}}]\n}"
       },
-      "id": "call-claude-api",
       "name": "Call Claude API",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [1650, 300],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "ANTHROPIC_CREDENTIAL_ID",
-          "name": "Anthropic API"
-        }
-      }
+      "typeVersion": 3,
+      "position": [1650, 300]
     },
     {
       "parameters": {
-        "jsCode": "// Parse Claude's JSON response\nconst response = $input.item.json;\nlet claudeOutput;\n\ntry {\n  // Extract text from Claude response\n  const text = response.content[0].text;\n  \n  // Parse the JSON\n  claudeOutput = JSON.parse(text);\n} catch (e) {\n  // Fallback if parsing fails\n  claudeOutput = {\n    reply_text: \"Thanks for reaching out! Let me connect you with someone who can help. We'll be in touch shortly.\",\n    lead_status: \"handoff\",\n    intent: \"handoff\",\n    fields_extracted: {},\n    missing_fields: [],\n    booking_request: null,\n    handoff_reason: \"Failed to parse AI response\"\n  };\n}\n\nreturn {\n  ...claudeOutput,\n  lead: $('Prepare Claude Request').item.json.lead,\n  phone: $('Prepare Claude Request').item.json.phone,\n  config: $('Prepare Claude Request').item.json.config\n};"
+        "functionCode": "// Parse Claude's JSON response\nconst response = $json;\nconst prepData = $node['Prepare Claude Request'].json;\nlet claudeOutput;\n\ntry {\n  const text = response.content[0].text;\n  claudeOutput = JSON.parse(text);\n} catch (e) {\n  claudeOutput = {\n    reply_text: \"Thanks for reaching out! Let me connect you with someone who can help.\",\n    lead_status: \"handoff\",\n    intent: \"handoff\",\n    fields_extracted: {},\n    missing_fields: [],\n    booking_request: null,\n    handoff_reason: \"Failed to parse AI response\"\n  };\n}\n\nreturn [{\n  json: {\n    ...claudeOutput,\n    lead: prepData.lead,\n    phone: prepData.phone,\n    config: prepData.config\n  }\n}];"
       },
-      "id": "parse-claude-response",
       "name": "Parse Claude Response",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
       "position": [1850, 300]
     },
     {
       "parameters": {
         "operation": "update",
-        "documentId": {
-          "__rl": true,
-          "mode": "list",
-          "value": "={{ $credentials.sheetId }}"
-        },
-        "sheetName": "Leads",
-        "filtersUI": {
+        "sheetId": "YOUR_SHEET_ID",
+        "range": "Leads!A:M",
+        "key": "lead_id",
+        "fieldsUi": {
           "values": [
-            {
-              "lookupColumn": "lead_id",
-              "lookupValue": "={{ $json.lead.lead_id }}"
-            }
+            { "fieldId": "status", "fieldValue": "={{ $json.lead_status }}" },
+            { "fieldId": "last_message_at", "fieldValue": "={{ new Date().toISOString() }}" }
           ]
-        },
-        "columns": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "status": "={{ $json.lead_status }}",
-            "city": "={{ $json.fields_extracted.city || $json.lead.city }}",
-            "name": "={{ $json.fields_extracted.name || $json.lead.name }}",
-            "pool_type": "={{ $json.fields_extracted.pool_type || $json.lead.pool_type }}",
-            "pool_size": "={{ $json.fields_extracted.pool_size || $json.lead.pool_size }}",
-            "pool_condition": "={{ $json.fields_extracted.pool_condition || $json.lead.pool_condition }}",
-            "service_type": "={{ $json.fields_extracted.service_type || $json.lead.service_type }}",
-            "last_message_at": "={{ new Date().toISOString() }}",
-            "next_followup_at": "={{ $json.lead_status === 'qualified' && $json.intent !== 'book' ? new Date(Date.now() + 24*60*60*1000).toISOString() : '' }}"
-          }
         },
         "options": {}
       },
-      "id": "update-lead",
       "name": "Update Lead",
       "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4,
-      "position": [2050, 300],
-      "credentials": {
-        "googleSheetsOAuth2Api": {
-          "id": "GOOGLE_CREDENTIAL_ID",
-          "name": "Google Sheets"
-        }
-      }
+      "typeVersion": 2,
+      "position": [2050, 300]
     },
     {
       "parameters": {
         "operation": "append",
-        "documentId": {
-          "__rl": true,
-          "mode": "list",
-          "value": "={{ $credentials.sheetId }}"
-        },
-        "sheetName": "Messages",
-        "columns": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "lead_id": "={{ $json.lead.lead_id }}",
-            "timestamp": "={{ new Date().toISOString() }}",
-            "direction": "out",
-            "text": "={{ $json.reply_text }}"
-          }
-        },
-        "options": {}
-      },
-      "id": "log-outbound-message",
-      "name": "Log Outbound Message",
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4,
-      "position": [2250, 300],
-      "credentials": {
-        "googleSheetsOAuth2Api": {
-          "id": "GOOGLE_CREDENTIAL_ID",
-          "name": "Google Sheets"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "rules": {
+        "sheetId": "YOUR_SHEET_ID",
+        "range": "Messages!A:D",
+        "options": {},
+        "fieldsUi": {
           "values": [
-            {
-              "conditions": {
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.intent }}",
-                    "rightValue": "handoff",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ]
-              },
-              "renameOutput": true,
-              "outputKey": "handoff"
-            },
-            {
-              "conditions": {
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.intent }}",
-                    "rightValue": "handoff",
-                    "operator": {
-                      "type": "string",
-                      "operation": "notEquals"
-                    }
-                  }
-                ]
-              },
-              "renameOutput": true,
-              "outputKey": "reply"
-            }
+            { "fieldId": "lead_id", "fieldValue": "={{ $json.lead.lead_id }}" },
+            { "fieldId": "timestamp", "fieldValue": "={{ new Date().toISOString() }}" },
+            { "fieldId": "direction", "fieldValue": "out" },
+            { "fieldId": "text", "fieldValue": "={{ $json.reply_text }}" }
           ]
         }
       },
-      "id": "route-by-intent",
-      "name": "Route by Intent",
-      "type": "n8n-nodes-base.switch",
+      "name": "Log Outbound Message",
+      "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 2,
+      "position": [2250, 300]
+    },
+    {
+      "parameters": {
+        "from": "={{ $json.config.twilio_number }}",
+        "to": "={{ $json.phone }}",
+        "message": "={{ $json.reply_text }}"
+      },
+      "name": "Send SMS Reply",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
       "position": [2450, 300]
     },
     {
       "parameters": {
-        "from": "={{ $json.config.twilio_number }}",
-        "to": "={{ $json.phone }}",
-        "message": "={{ $json.reply_text }}"
+        "respondWith": "text",
+        "responseBody": "OK"
       },
-      "id": "send-sms-reply",
-      "name": "Send SMS Reply",
-      "type": "n8n-nodes-base.twilio",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [2650, 200],
-      "credentials": {
-        "twilioApi": {
-          "id": "TWILIO_CREDENTIAL_ID",
-          "name": "Twilio"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "from": "={{ $json.config.twilio_number }}",
-        "to": "={{ $json.phone }}",
-        "message": "={{ $json.reply_text }}"
-      },
-      "id": "send-sms-handoff",
-      "name": "Send SMS (Handoff)",
-      "type": "n8n-nodes-base.twilio",
-      "typeVersion": 1,
-      "position": [2650, 400],
-      "credentials": {
-        "twilioApi": {
-          "id": "TWILIO_CREDENTIAL_ID",
-          "name": "Twilio"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "from": "={{ $json.config.twilio_number }}",
-        "to": "={{ $json.config.handoff_phone }}",
-        "message": "=HANDOFF ALERT: Lead {{ $json.phone }} needs help.\nReason: {{ $json.handoff_reason }}\nLast message: {{ $('Twilio Webhook').item.json.Body }}"
-      },
-      "id": "notify-owner",
-      "name": "Notify Owner",
-      "type": "n8n-nodes-base.twilio",
-      "typeVersion": 1,
-      "position": [2850, 400],
-      "credentials": {
-        "twilioApi": {
-          "id": "TWILIO_CREDENTIAL_ID",
-          "name": "Twilio"
-        }
-      }
+      "position": [2650, 300]
     }
   ],
   "connections": {
     "Twilio Webhook": {
-      "main": [
-        [
-          {
-            "node": "Lookup Lead",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Lookup Lead", "type": "main", "index": 0 }]]
     },
     "Lookup Lead": {
-      "main": [
-        [
-          {
-            "node": "Lead Exists?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Lead Exists?", "type": "main", "index": 0 }]]
     },
     "Lead Exists?": {
       "main": [
-        [
-          {
-            "node": "Log Inbound Message",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Create New Lead",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Log Inbound Message", "type": "main", "index": 0 }],
+        [{ "node": "Create New Lead", "type": "main", "index": 0 }]
       ]
     },
     "Create New Lead": {
-      "main": [
-        [
-          {
-            "node": "Log Inbound Message",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Log Inbound Message", "type": "main", "index": 0 }]]
     },
     "Log Inbound Message": {
       "main": [
-        [
-          {
-            "node": "Get Message History",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Get Config",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Get Message History", "type": "main", "index": 0 }],
+        [{ "node": "Get Config", "type": "main", "index": 0 }]
       ]
     },
     "Get Message History": {
-      "main": [
-        [
-          {
-            "node": "Prepare Claude Request",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Prepare Claude Request", "type": "main", "index": 0 }]]
     },
     "Get Config": {
-      "main": [
-        [
-          {
-            "node": "Prepare Claude Request",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Prepare Claude Request", "type": "main", "index": 0 }]]
     },
     "Prepare Claude Request": {
-      "main": [
-        [
-          {
-            "node": "Call Claude API",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Call Claude API", "type": "main", "index": 0 }]]
     },
     "Call Claude API": {
-      "main": [
-        [
-          {
-            "node": "Parse Claude Response",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Parse Claude Response", "type": "main", "index": 0 }]]
     },
     "Parse Claude Response": {
-      "main": [
-        [
-          {
-            "node": "Update Lead",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Update Lead", "type": "main", "index": 0 }]]
     },
     "Update Lead": {
-      "main": [
-        [
-          {
-            "node": "Log Outbound Message",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Log Outbound Message", "type": "main", "index": 0 }]]
     },
     "Log Outbound Message": {
-      "main": [
-        [
-          {
-            "node": "Route by Intent",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Send SMS Reply", "type": "main", "index": 0 }]]
     },
-    "Route by Intent": {
-      "main": [
-        [
-          {
-            "node": "Send SMS (Handoff)",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Send SMS Reply",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Send SMS (Handoff)": {
-      "main": [
-        [
-          {
-            "node": "Notify Owner",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Send SMS Reply": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
     }
   },
   "settings": {
     "executionOrder": "v1"
-  },
-  "staticData": null,
-  "tags": [],
-  "triggerCount": 1,
-  "updatedAt": "2024-01-01T00:00:00.000Z",
-  "versionId": "1"
+  }
 }
