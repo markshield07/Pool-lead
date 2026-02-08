@@ -1,14 +1,14 @@
 {
-  "name": "Pool Lead - Inbound SMS Handler",
+  "name": "Pool Lead - SMS Handler",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
         "path": "pool-lead-sms",
-        "responseMode": "lastNode",
+        "responseMode": "onReceived",
         "options": {}
       },
-      "name": "Twilio Webhook",
+      "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
       "position": [250, 300]
@@ -18,17 +18,9 @@
         "operation": "append",
         "sheetId": "YOUR_SHEET_ID",
         "range": "Messages!A:D",
-        "options": {},
-        "fieldsUi": {
-          "values": [
-            { "fieldId": "lead_id", "fieldValue": "={{ $json.From }}" },
-            { "fieldId": "timestamp", "fieldValue": "={{ new Date().toISOString() }}" },
-            { "fieldId": "direction", "fieldValue": "in" },
-            { "fieldId": "text", "fieldValue": "={{ $json.Body }}" }
-          ]
-        }
+        "options": {}
       },
-      "name": "Log Inbound Message",
+      "name": "Log Message",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 2,
       "position": [450, 300]
@@ -46,21 +38,10 @@
     },
     {
       "parameters": {
-        "functionCode": "const webhook = $node['Twilio Webhook'].json;\nconst configItems = $items('Get Config');\n\nconst config = {};\nconfigItems.forEach(item => {\n  config[item.json.key] = item.json.value;\n});\n\nconst systemPrompt = `You are a scheduling assistant for a local pool cleaning company called ${config.business_name || 'our company'}.\nGoal: convert inquiries into booked appointments or qualified leads.\n\nService areas: ${config.service_cities || 'local area'}\nPricing: ${config.pricing_weekly_range || '$140-180/month'}\n\nRules:\n- Be brief, friendly, professional. 1-2 short sentences max.\n- Ask only one question at a time.\n- Always check service city first. If outside service area: politely decline.\n- Give price ranges only.\n- If uncertain or customer requests human: say you will have someone call them.\n- Output valid JSON only with this format: {\"reply_text\": \"your message here\"}`;\n\nconst userMessage = `Customer phone: ${webhook.From}\\nCustomer message: \"${webhook.Body}\"\\n\\nRespond with JSON only: {\"reply_text\": \"your reply\"}`;\n\nreturn [{\n  json: {\n    config,\n    systemPrompt,\n    userMessage,\n    phone: webhook.From,\n    inboundMessage: webhook.Body\n  }\n}];"
-      },
-      "name": "Prepare Request",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
-      "position": [850, 300]
-    },
-    {
-      "parameters": {
         "requestMethod": "POST",
         "url": "https://api.anthropic.com/v1/messages",
         "jsonParameters": true,
-        "options": {
-          "bodyContentType": "json"
-        },
+        "options": {},
         "headerParametersUi": {
           "parameter": [
             { "name": "x-api-key", "value": "YOUR_CLAUDE_API_KEY" },
@@ -68,92 +49,49 @@
             { "name": "content-type", "value": "application/json" }
           ]
         },
-        "bodyParametersJson": "={\n  \"model\": \"claude-sonnet-4-20250514\",\n  \"max_tokens\": 256,\n  \"system\": {{ JSON.stringify($json.systemPrompt) }},\n  \"messages\": [{\"role\": \"user\", \"content\": {{ JSON.stringify($json.userMessage) }}}]\n}"
+        "bodyParametersJson": "={\"model\": \"claude-sonnet-4-20250514\", \"max_tokens\": 256, \"system\": \"You are a friendly scheduling assistant for a pool cleaning company. Help customers with quotes and scheduling. Be brief (1-2 sentences). Respond with JSON only: {\\\"reply_text\\\": \\\"your message\\\"}\", \"messages\": [{\"role\": \"user\", \"content\": \"Customer says: {{ $node['Webhook'].json.Body }}\"}]}"
       },
       "name": "Call Claude",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [1050, 300]
+      "position": [850, 300]
     },
     {
       "parameters": {
-        "functionCode": "const response = $json;\nconst prepData = $node['Prepare Request'].json;\nlet replyText;\n\ntry {\n  const text = response.content[0].text;\n  const parsed = JSON.parse(text);\n  replyText = parsed.reply_text;\n} catch (e) {\n  replyText = \"Thanks for reaching out! Someone from our team will get back to you shortly.\";\n}\n\nreturn [{\n  json: {\n    reply_text: replyText,\n    phone: prepData.phone,\n    config: prepData.config\n  }\n}];"
+        "functionCode": "let replyText;\ntry {\n  const text = $json.content[0].text;\n  const parsed = JSON.parse(text);\n  replyText = parsed.reply_text;\n} catch (e) {\n  replyText = 'Thanks for reaching out! Someone will get back to you soon.';\n}\n\nreturn [{ json: { reply_text: replyText, phone: $node['Webhook'].json.From, twilio_number: $node['Get Config'].json.twilio_number || $items('Get Config').find(i => i.json.key === 'twilio_number')?.json.value } }];"
       },
       "name": "Parse Response",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [1250, 300]
+      "position": [1050, 300]
     },
     {
       "parameters": {
-        "operation": "append",
-        "sheetId": "YOUR_SHEET_ID",
-        "range": "Messages!A:D",
-        "options": {},
-        "fieldsUi": {
-          "values": [
-            { "fieldId": "lead_id", "fieldValue": "={{ $json.phone }}" },
-            { "fieldId": "timestamp", "fieldValue": "={{ new Date().toISOString() }}" },
-            { "fieldId": "direction", "fieldValue": "out" },
-            { "fieldId": "text", "fieldValue": "={{ $json.reply_text }}" }
-          ]
-        }
-      },
-      "name": "Log Outbound",
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 2,
-      "position": [1450, 300]
-    },
-    {
-      "parameters": {
-        "from": "={{ $json.config.twilio_number }}",
+        "from": "={{ $json.twilio_number }}",
         "to": "={{ $json.phone }}",
         "message": "={{ $json.reply_text }}"
       },
       "name": "Send SMS",
       "type": "n8n-nodes-base.twilio",
       "typeVersion": 1,
-      "position": [1650, 300]
-    },
-    {
-      "parameters": {
-        "values": {
-          "string": [
-            { "name": "status", "value": "ok" }
-          ]
-        },
-        "options": {}
-      },
-      "name": "Response",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 1,
-      "position": [1850, 300]
+      "position": [1250, 300]
     }
   ],
   "connections": {
-    "Twilio Webhook": {
-      "main": [[{ "node": "Log Inbound Message", "type": "main", "index": 0 }]]
+    "Webhook": {
+      "main": [[{ "node": "Log Message", "type": "main", "index": 0 }]]
     },
-    "Log Inbound Message": {
+    "Log Message": {
       "main": [[{ "node": "Get Config", "type": "main", "index": 0 }]]
     },
     "Get Config": {
-      "main": [[{ "node": "Prepare Request", "type": "main", "index": 0 }]]
-    },
-    "Prepare Request": {
       "main": [[{ "node": "Call Claude", "type": "main", "index": 0 }]]
     },
     "Call Claude": {
       "main": [[{ "node": "Parse Response", "type": "main", "index": 0 }]]
     },
     "Parse Response": {
-      "main": [[{ "node": "Log Outbound", "type": "main", "index": 0 }]]
-    },
-    "Log Outbound": {
       "main": [[{ "node": "Send SMS", "type": "main", "index": 0 }]]
-    },
-    "Send SMS": {
-      "main": [[{ "node": "Response", "type": "main", "index": 0 }]]
     }
   },
   "settings": {
