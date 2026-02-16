@@ -15,15 +15,137 @@
     },
     {
       "parameters": {
-        "operation": "append",
         "sheetId": "YOUR_SHEET_ID",
-        "range": "Messages!A:D",
-        "options": {}
+        "range": "Leads!A:M",
+        "options": {
+          "returnAllMatches": false
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "phone",
+              "lookupValue": "={{ $json.From }}"
+            }
+          ]
+        }
       },
-      "name": "Log Message",
+      "name": "Lookup Lead",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 2,
       "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Check if lead exists, create if not\nconst lookupResult = $json;\nconst phone = $node['Webhook'].json.From;\nconst inboundText = $node['Webhook'].json.Body;\n\nlet lead;\nlet isNewLead = false;\n\nif (lookupResult && lookupResult.lead_id) {\n  lead = lookupResult;\n} else {\n  // Create new lead structure\n  isNewLead = true;\n  lead = {\n    lead_id: 'lead_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),\n    phone: phone,\n    name: null,\n    city: null,\n    address: null,\n    pool_type: null,\n    pool_size: null,\n    pool_condition: null,\n    service_type: null,\n    status: 'new',\n    last_message_at: new Date().toISOString(),\n    next_followup_at: null,\n    notes: null\n  };\n}\n\nreturn [{\n  json: {\n    lead: lead,\n    isNewLead: isNewLead,\n    inboundText: inboundText,\n    phone: phone\n  }\n}];"
+      },
+      "name": "Process Lead",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.isNewLead }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Is New Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "sheetId": "YOUR_SHEET_ID",
+        "range": "Leads!A:M",
+        "options": {},
+        "fieldsUi": {
+          "values": [
+            { "fieldId": "lead_id", "fieldValue": "={{ $json.lead.lead_id }}" },
+            { "fieldId": "phone", "fieldValue": "={{ $json.lead.phone }}" },
+            { "fieldId": "name", "fieldValue": "" },
+            { "fieldId": "city", "fieldValue": "" },
+            { "fieldId": "address", "fieldValue": "" },
+            { "fieldId": "pool_type", "fieldValue": "" },
+            { "fieldId": "pool_size", "fieldValue": "" },
+            { "fieldId": "pool_condition", "fieldValue": "" },
+            { "fieldId": "service_type", "fieldValue": "" },
+            { "fieldId": "status", "fieldValue": "new" },
+            { "fieldId": "last_message_at", "fieldValue": "={{ new Date().toISOString() }}" },
+            { "fieldId": "next_followup_at", "fieldValue": "" },
+            { "fieldId": "notes", "fieldValue": "" }
+          ]
+        }
+      },
+      "name": "Create Lead",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 2,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {},
+      "name": "Existing Lead",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1050, 400]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "sheetId": "YOUR_SHEET_ID",
+        "range": "Messages!A:D",
+        "options": {},
+        "fieldsUi": {
+          "values": [
+            { "fieldId": "lead_id", "fieldValue": "={{ $('Process Lead').item.json.lead.lead_id }}" },
+            { "fieldId": "timestamp", "fieldValue": "={{ new Date().toISOString() }}" },
+            { "fieldId": "direction", "fieldValue": "in" },
+            { "fieldId": "text", "fieldValue": "={{ $('Process Lead').item.json.inboundText }}" }
+          ]
+        }
+      },
+      "name": "Log Inbound",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 2,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "sheetId": "YOUR_SHEET_ID",
+        "range": "Messages!A:D",
+        "options": {
+          "returnAllMatches": true
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "lead_id",
+              "lookupValue": "={{ $('Process Lead').item.json.lead.lead_id }}"
+            }
+          ]
+        }
+      },
+      "name": "Get History",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 2,
+      "position": [1650, 300]
     },
     {
       "parameters": {
@@ -34,64 +156,198 @@
       "name": "Get Config",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 2,
-      "position": [650, 300]
+      "position": [1850, 300]
     },
     {
       "parameters": {
-        "requestMethod": "POST",
+        "functionCode": "// Prepare data for Claude API call\nconst lead = $('Process Lead').item.json.lead;\nconst inboundText = $('Process Lead').item.json.inboundText;\n\n// Get last 10 messages from history\nconst historyItems = $items('Get History') || [];\nconst messages = historyItems\n  .map(item => item.json)\n  .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))\n  .slice(-10);\n\n// Convert config items to object\nconst configItems = $items('Get Config') || [];\nconst config = {};\nconfigItems.forEach(item => {\n  if (item.json.key && item.json.value !== undefined) {\n    config[item.json.key] = item.json.value;\n  }\n});\n\n// Build conversation history for Claude\nlet conversationHistory = messages.map(m => {\n  return (m.direction === 'in' ? 'Customer: ' : 'Agent: ') + m.text;\n}).join('\\n');\n\nconst systemPrompt = `You are a scheduling assistant for a local pool cleaning company.\n\nGOAL: Convert inquiries into booked appointments or qualified leads.\n\nBUSINESS CONFIG:\n- Business Name: ${config.business_name || 'Pool Cleaning Co'}\n- Service Cities: ${config.service_cities || 'Not configured'}\n- Weekly Pricing: ${config.pricing_weekly_range || '$140-$180/month'}\n- Bi-weekly Pricing: ${config.pricing_biweekly_range || '$90-$120/month'}\n- One-time Pricing: ${config.pricing_onetime_range || '$150-$300'}\n- Office Hours: ${config.office_hours || '9am-5pm'}\n\nRULES:\n1. Be brief and friendly (1-2 sentences max)\n2. Ask ONE question at a time\n3. Check service city FIRST - politely decline if outside area\n4. Give price RANGES only, never exact pricing\n5. If uncertain or customer requests human: set intent=handoff\n6. Output MUST be valid JSON only - no extra text\n\nQUALIFICATION FLOW:\n1. Greet + ask city\n2. Confirm residential vs commercial\n3. Ask pool size (standard/large/not sure)\n4. Ask service needed (weekly/biweekly/one-time/quote)\n5. Provide pricing range\n6. Offer to book\n\nOUTPUT FORMAT (strict JSON):\n{\n  \"reply_text\": \"Your message to send\",\n  \"lead_status\": \"new|qualifying|qualified|booked|unqualified|handoff\",\n  \"intent\": \"ask_question|give_pricing|book|follow_up|handoff\",\n  \"fields_extracted\": {\n    \"name\": null,\n    \"city\": null,\n    \"address\": null,\n    \"pool_type\": null,\n    \"pool_size\": null,\n    \"pool_condition\": null,\n    \"service_type\": null\n  },\n  \"missing_fields\": [\"city\", \"pool_type\"],\n  \"booking_request\": {\n    \"preferred_days\": null,\n    \"preferred_times\": null\n  },\n  \"handoff_reason\": null\n}`;\n\nconst userMessage = `CURRENT LEAD RECORD:\n${JSON.stringify(lead, null, 2)}\n\nCONVERSATION HISTORY:\n${conversationHistory || '(new conversation)'}\n\nNEW MESSAGE FROM CUSTOMER:\n${inboundText}\n\nRespond with JSON only.`;\n\nreturn [{\n  json: {\n    systemPrompt: systemPrompt,\n    userMessage: userMessage,\n    lead: lead,\n    config: config\n  }\n}];"
+      },
+      "name": "Prepare Claude Request",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2050, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
         "url": "https://api.anthropic.com/v1/messages",
-        "jsonParameters": true,
-        "options": {},
-        "headerParametersUi": {
-          "parameter": [
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
             { "name": "x-api-key", "value": "YOUR_CLAUDE_API_KEY" },
             { "name": "anthropic-version", "value": "2023-06-01" },
             { "name": "content-type", "value": "application/json" }
           ]
         },
-        "bodyParametersJson": "={\"model\": \"claude-sonnet-4-20250514\", \"max_tokens\": 256, \"system\": \"You are a friendly scheduling assistant for a pool cleaning company. Help customers with quotes and scheduling. Be brief (1-2 sentences). Respond with JSON only: {\\\"reply_text\\\": \\\"your message\\\"}\", \"messages\": [{\"role\": \"user\", \"content\": \"Customer says: {{ $node['Webhook'].json.Body }}\"}]}"
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-20250514\",\n  \"max_tokens\": 512,\n  \"system\": {{ JSON.stringify($json.systemPrompt) }},\n  \"messages\": [{\"role\": \"user\", \"content\": {{ JSON.stringify($json.userMessage) }}}]\n}",
+        "options": {}
       },
       "name": "Call Claude",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [850, 300]
+      "typeVersion": 4,
+      "position": [2250, 300]
     },
     {
       "parameters": {
-        "functionCode": "let replyText;\ntry {\n  const text = $json.content[0].text;\n  const parsed = JSON.parse(text);\n  replyText = parsed.reply_text;\n} catch (e) {\n  replyText = 'Thanks for reaching out! Someone will get back to you soon.';\n}\n\nreturn [{ json: { reply_text: replyText, phone: $node['Webhook'].json.From, twilio_number: $node['Get Config'].json.twilio_number || $items('Get Config').find(i => i.json.key === 'twilio_number')?.json.value } }];"
+        "functionCode": "// Parse Claude's JSON response\nconst response = $json;\nconst prepData = $node['Prepare Claude Request'].json;\nconst config = prepData.config;\nconst lead = prepData.lead;\n\nlet parsed;\nlet replyText;\n\ntry {\n  const text = response.content[0].text;\n  // Try to parse as JSON\n  parsed = JSON.parse(text);\n  replyText = parsed.reply_text;\n} catch (e) {\n  // If JSON parsing fails, try to extract just the reply\n  try {\n    const text = response.content[0].text;\n    // Maybe Claude added extra text, try to find JSON\n    const jsonMatch = text.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      parsed = JSON.parse(jsonMatch[0]);\n      replyText = parsed.reply_text;\n    } else {\n      throw new Error('No JSON found');\n    }\n  } catch (e2) {\n    // Fallback\n    parsed = {\n      reply_text: 'Thanks for reaching out! Someone will get back to you shortly.',\n      lead_status: lead.status || 'new',\n      intent: 'handoff',\n      fields_extracted: {},\n      missing_fields: [],\n      booking_request: {},\n      handoff_reason: 'Failed to parse AI response'\n    };\n    replyText = parsed.reply_text;\n  }\n}\n\n// Merge extracted fields with existing lead data\nconst fieldsExtracted = parsed.fields_extracted || {};\nconst updatedLead = { ...lead };\n\nObject.keys(fieldsExtracted).forEach(key => {\n  if (fieldsExtracted[key] !== null && fieldsExtracted[key] !== undefined) {\n    updatedLead[key] = fieldsExtracted[key];\n  }\n});\n\n// Update status\nupdatedLead.status = parsed.lead_status || lead.status;\nupdatedLead.last_message_at = new Date().toISOString();\n\n// Set follow-up if not booked\nif (parsed.lead_status !== 'booked' && parsed.lead_status !== 'unqualified' && parsed.lead_status !== 'handoff') {\n  updatedLead.next_followup_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();\n} else {\n  updatedLead.next_followup_at = null;\n}\n\nreturn [{\n  json: {\n    reply_text: replyText,\n    parsed_response: parsed,\n    lead: updatedLead,\n    config: config,\n    twilio_number: config.twilio_number\n  }\n}];"
       },
       "name": "Parse Response",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [1050, 300]
+      "position": [2450, 300]
     },
     {
       "parameters": {
-        "from": "={{ $json.twilio_number }}",
-        "to": "={{ $json.phone }}",
-        "message": "={{ $json.reply_text }}"
+        "operation": "update",
+        "sheetId": "YOUR_SHEET_ID",
+        "range": "Leads!A:M",
+        "key": "lead_id",
+        "fieldsUi": {
+          "values": [
+            { "fieldId": "name", "fieldValue": "={{ $json.lead.name || '' }}" },
+            { "fieldId": "city", "fieldValue": "={{ $json.lead.city || '' }}" },
+            { "fieldId": "address", "fieldValue": "={{ $json.lead.address || '' }}" },
+            { "fieldId": "pool_type", "fieldValue": "={{ $json.lead.pool_type || '' }}" },
+            { "fieldId": "pool_size", "fieldValue": "={{ $json.lead.pool_size || '' }}" },
+            { "fieldId": "pool_condition", "fieldValue": "={{ $json.lead.pool_condition || '' }}" },
+            { "fieldId": "service_type", "fieldValue": "={{ $json.lead.service_type || '' }}" },
+            { "fieldId": "status", "fieldValue": "={{ $json.lead.status }}" },
+            { "fieldId": "last_message_at", "fieldValue": "={{ $json.lead.last_message_at }}" },
+            { "fieldId": "next_followup_at", "fieldValue": "={{ $json.lead.next_followup_at || '' }}" }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Update Lead",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 2,
+      "position": [2650, 300]
+    },
+    {
+      "parameters": {
+        "from": "={{ $('Parse Response').item.json.twilio_number }}",
+        "to": "={{ $('Process Lead').item.json.phone }}",
+        "message": "={{ $('Parse Response').item.json.reply_text }}"
       },
       "name": "Send SMS",
       "type": "n8n-nodes-base.twilio",
       "typeVersion": 1,
-      "position": [1250, 300]
+      "position": [2850, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "sheetId": "YOUR_SHEET_ID",
+        "range": "Messages!A:D",
+        "options": {},
+        "fieldsUi": {
+          "values": [
+            { "fieldId": "lead_id", "fieldValue": "={{ $('Process Lead').item.json.lead.lead_id }}" },
+            { "fieldId": "timestamp", "fieldValue": "={{ new Date().toISOString() }}" },
+            { "fieldId": "direction", "fieldValue": "out" },
+            { "fieldId": "text", "fieldValue": "={{ $('Parse Response').item.json.reply_text }}" }
+          ]
+        }
+      },
+      "name": "Log Outbound",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 2,
+      "position": [3050, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $('Parse Response').item.json.parsed_response.intent }}",
+              "value2": "handoff"
+            }
+          ]
+        }
+      },
+      "name": "Needs Handoff?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [3250, 300]
+    },
+    {
+      "parameters": {
+        "from": "={{ $('Parse Response').item.json.twilio_number }}",
+        "to": "={{ $('Parse Response').item.json.config.handoff_phone }}",
+        "message": "=LEAD NEEDS ATTENTION\\n\\nPhone: {{ $('Process Lead').item.json.phone }}\\nReason: {{ $('Parse Response').item.json.parsed_response.handoff_reason || 'Customer requested human' }}\\nLast message: {{ $('Process Lead').item.json.inboundText }}"
+      },
+      "name": "Notify Owner",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [3450, 200]
+    },
+    {
+      "parameters": {},
+      "name": "Done",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [3450, 400]
     }
   ],
   "connections": {
     "Webhook": {
-      "main": [[{ "node": "Log Message", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Lookup Lead", "type": "main", "index": 0 }]]
     },
-    "Log Message": {
+    "Lookup Lead": {
+      "main": [[{ "node": "Process Lead", "type": "main", "index": 0 }]]
+    },
+    "Process Lead": {
+      "main": [[{ "node": "Is New Lead?", "type": "main", "index": 0 }]]
+    },
+    "Is New Lead?": {
+      "main": [
+        [{ "node": "Create Lead", "type": "main", "index": 0 }],
+        [{ "node": "Existing Lead", "type": "main", "index": 0 }]
+      ]
+    },
+    "Create Lead": {
+      "main": [[{ "node": "Merge", "type": "main", "index": 0 }]]
+    },
+    "Existing Lead": {
+      "main": [[{ "node": "Merge", "type": "main", "index": 1 }]]
+    },
+    "Merge": {
+      "main": [[{ "node": "Log Inbound", "type": "main", "index": 0 }]]
+    },
+    "Log Inbound": {
+      "main": [[{ "node": "Get History", "type": "main", "index": 0 }]]
+    },
+    "Get History": {
       "main": [[{ "node": "Get Config", "type": "main", "index": 0 }]]
     },
     "Get Config": {
+      "main": [[{ "node": "Prepare Claude Request", "type": "main", "index": 0 }]]
+    },
+    "Prepare Claude Request": {
       "main": [[{ "node": "Call Claude", "type": "main", "index": 0 }]]
     },
     "Call Claude": {
       "main": [[{ "node": "Parse Response", "type": "main", "index": 0 }]]
     },
     "Parse Response": {
+      "main": [[{ "node": "Update Lead", "type": "main", "index": 0 }]]
+    },
+    "Update Lead": {
       "main": [[{ "node": "Send SMS", "type": "main", "index": 0 }]]
+    },
+    "Send SMS": {
+      "main": [[{ "node": "Log Outbound", "type": "main", "index": 0 }]]
+    },
+    "Log Outbound": {
+      "main": [[{ "node": "Needs Handoff?", "type": "main", "index": 0 }]]
+    },
+    "Needs Handoff?": {
+      "main": [
+        [{ "node": "Notify Owner", "type": "main", "index": 0 }],
+        [{ "node": "Done", "type": "main", "index": 0 }]
+      ]
     }
   },
   "settings": {
