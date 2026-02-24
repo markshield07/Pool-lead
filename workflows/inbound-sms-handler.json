@@ -169,18 +169,19 @@
       "parameters": {
         "method": "POST",
         "url": "https://api.anthropic.com/v1/messages",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "x-api-key", "value": "={{ $env.CLAUDE_API_KEY }}" },
-            { "name": "anthropic-version", "value": "2023-06-01" },
-            { "name": "content-type", "value": "application/json" }
-          ]
-        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"model\": \"claude-sonnet-4-20250514\",\n  \"max_tokens\": 512,\n  \"system\": {{ JSON.stringify($json.systemPrompt) }},\n  \"messages\": [{\"role\": \"user\", \"content\": {{ JSON.stringify($json.userMessage) }}}]\n}",
-        "options": {}
+        "options": {
+          "headers": {
+            "headerValues": [
+              { "name": "x-api-key", "value": "={{ $env.CLAUDE_API_KEY }}" },
+              { "name": "anthropic-version", "value": "2023-06-01" }
+            ]
+          }
+        }
       },
       "name": "Call Claude",
       "type": "n8n-nodes-base.httpRequest",
