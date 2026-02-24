@@ -97,9 +97,7 @@
     },
     {
       "parameters": {
-        "mode": "combine",
-        "combineBy": "combineAll",
-        "options": {}
+        "mode": "append"
       },
       "name": "Merge",
       "type": "n8n-nodes-base.merge",
