@@ -1,0 +1,6 @@
+# Local workflow copies with credentials
+workflows/*-LOCAL.json
+
+# Environment files
+.env
+.env.*
