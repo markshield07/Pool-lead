@@ -15,7 +15,7 @@
     },
     {
       "parameters": {
-        "sheetId": "YOUR_SHEET_ID",
+        "sheetId": "={{ $env.GOOGLE_SHEET_ID }}",
         "range": "Leads!A:M",
         "options": {
           "returnAllMatches": false
@@ -62,7 +62,7 @@
     {
       "parameters": {
         "operation": "append",
-        "sheetId": "YOUR_SHEET_ID",
+        "sheetId": "={{ $env.GOOGLE_SHEET_ID }}",
         "range": "Leads!A:M",
         "options": {},
         "fieldsUi": {
@@ -109,7 +109,7 @@
     {
       "parameters": {
         "operation": "append",
-        "sheetId": "YOUR_SHEET_ID",
+        "sheetId": "={{ $env.GOOGLE_SHEET_ID }}",
         "range": "Messages!A:D",
         "options": {},
         "fieldsUi": {
@@ -128,7 +128,7 @@
     },
     {
       "parameters": {
-        "sheetId": "YOUR_SHEET_ID",
+        "sheetId": "={{ $env.GOOGLE_SHEET_ID }}",
         "range": "Messages!A:D",
         "options": {
           "returnAllMatches": true
@@ -149,7 +149,7 @@
     },
     {
       "parameters": {
-        "sheetId": "YOUR_SHEET_ID",
+        "sheetId": "={{ $env.GOOGLE_SHEET_ID }}",
         "range": "Config!A:B",
         "options": {}
       },
@@ -174,7 +174,7 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "x-api-key", "value": "YOUR_CLAUDE_API_KEY" },
+            { "name": "x-api-key", "value": "={{ $env.CLAUDE_API_KEY }}" },
             { "name": "anthropic-version", "value": "2023-06-01" },
             { "name": "content-type", "value": "application/json" }
           ]
@@ -201,7 +201,7 @@
     {
       "parameters": {
         "operation": "update",
-        "sheetId": "YOUR_SHEET_ID",
+        "sheetId": "={{ $env.GOOGLE_SHEET_ID }}",
         "range": "Leads!A:M",
         "key": "lead_id",
         "fieldsUi": {
@@ -239,7 +239,7 @@
     {
       "parameters": {
         "operation": "append",
-        "sheetId": "YOUR_SHEET_ID",
+        "sheetId": "={{ $env.GOOGLE_SHEET_ID }}",
         "range": "Messages!A:D",
         "options": {},
         "fieldsUi": {

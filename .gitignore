@@ -1,6 +1,10 @@
 # Local workflow copies with credentials
 workflows/*-LOCAL.json
 
-# Environment files
+# Environment files (keep .env.example, ignore actual .env)
 .env
-.env.*
+.env.local
+.env.production
+
+# Don't ignore .env.example - it's a template
+!.env.example
