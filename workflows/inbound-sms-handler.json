@@ -15,6 +15,21 @@
     },
     {
       "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "phone", "name": "phone", "value": "={{ $json.From }}", "type": "string" },
+            { "id": "inboundText", "name": "inboundText", "value": "={{ $json.Body }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Save Webhook Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
         "sheetId": "={{ $env.GOOGLE_SHEET_ID }}",
         "range": "Leads!A:M",
         "options": {
@@ -24,7 +39,7 @@
           "values": [
             {
               "lookupColumn": "phone",
-              "lookupValue": "={{ $json.From }}"
+              "lookupValue": "={{ $json.phone }}"
             }
           ]
         }
@@ -32,16 +47,16 @@
       "name": "Lookup Lead",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 2,
-      "position": [450, 300]
+      "position": [650, 300]
     },
     {
       "parameters": {
-        "functionCode": "// Check if lead exists, create if not\nconst lookupResult = $json;\nconst phone = $node['Webhook'].json.From;\nconst inboundText = $node['Webhook'].json.Body;\n\nlet lead;\nlet isNewLead = false;\n\nif (lookupResult && lookupResult.lead_id) {\n  lead = lookupResult;\n} else {\n  // Create new lead structure\n  isNewLead = true;\n  lead = {\n    lead_id: 'lead_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),\n    phone: phone,\n    name: null,\n    city: null,\n    address: null,\n    pool_type: null,\n    pool_size: null,\n    pool_condition: null,\n    service_type: null,\n    status: 'new',\n    last_message_at: new Date().toISOString(),\n    next_followup_at: null,\n    notes: null\n  };\n}\n\nreturn [{\n  json: {\n    lead: lead,\n    isNewLead: isNewLead,\n    inboundText: inboundText,\n    phone: phone\n  }\n}];"
+        "functionCode": "// Get saved webhook data\nconst savedData = $('Save Webhook Data').item.json;\nconst phone = savedData.phone;\nconst inboundText = savedData.inboundText;\n\n// Check if lead exists from lookup\nconst lookupResult = $json;\n\nlet lead;\nlet isNewLead = false;\n\nif (lookupResult && lookupResult.lead_id) {\n  lead = lookupResult;\n} else {\n  // Create new lead structure\n  isNewLead = true;\n  lead = {\n    lead_id: 'lead_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),\n    phone: phone,\n    name: null,\n    city: null,\n    address: null,\n    pool_type: null,\n    pool_size: null,\n    pool_condition: null,\n    service_type: null,\n    status: 'new',\n    last_message_at: new Date().toISOString(),\n    next_followup_at: null,\n    notes: null\n  };\n}\n\nreturn [{\n  json: {\n    lead: lead,\n    isNewLead: isNewLead,\n    inboundText: inboundText,\n    phone: phone\n  }\n}];"
       },
       "name": "Process Lead",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [650, 300]
+      "position": [850, 300]
     },
     {
       "parameters": {
@@ -57,7 +72,7 @@
       "name": "Is New Lead?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [850, 300]
+      "position": [1050, 300]
     },
     {
       "parameters": {
@@ -86,14 +101,14 @@
       "name": "Create Lead",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 2,
-      "position": [1050, 200]
+      "position": [1250, 200]
     },
     {
       "parameters": {},
       "name": "Existing Lead",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [1050, 400]
+      "position": [1250, 400]
     },
     {
       "parameters": {
@@ -102,7 +117,7 @@
       "name": "Merge",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 2,
-      "position": [1250, 300]
+      "position": [1450, 300]
     },
     {
       "parameters": {
@@ -122,7 +137,7 @@
       "name": "Log Inbound",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 2,
-      "position": [1450, 300]
+      "position": [1650, 300]
     },
     {
       "parameters": {
@@ -143,7 +158,7 @@
       "name": "Get History",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 2,
-      "position": [1650, 300]
+      "position": [1850, 300]
     },
     {
       "parameters": {
@@ -154,7 +169,7 @@
       "name": "Get Config",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 2,
-      "position": [1850, 300]
+      "position": [2050, 300]
     },
     {
       "parameters": {
@@ -163,7 +178,7 @@
       "name": "Prepare Claude Request",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [2050, 300]
+      "position": [2250, 300]
     },
     {
       "parameters": {
@@ -186,16 +201,16 @@
       "name": "Call Claude",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [2250, 300]
+      "position": [2450, 300]
     },
     {
       "parameters": {
-        "functionCode": "// Parse Claude's JSON response\nconst response = $json;\nconst prepData = $node['Prepare Claude Request'].json;\nconst config = prepData.config;\nconst lead = prepData.lead;\n\nlet parsed;\nlet replyText;\n\ntry {\n  const text = response.content[0].text;\n  // Try to parse as JSON\n  parsed = JSON.parse(text);\n  replyText = parsed.reply_text;\n} catch (e) {\n  // If JSON parsing fails, try to extract just the reply\n  try {\n    const text = response.content[0].text;\n    // Maybe Claude added extra text, try to find JSON\n    const jsonMatch = text.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      parsed = JSON.parse(jsonMatch[0]);\n      replyText = parsed.reply_text;\n    } else {\n      throw new Error('No JSON found');\n    }\n  } catch (e2) {\n    // Fallback\n    parsed = {\n      reply_text: 'Thanks for reaching out! Someone will get back to you shortly.',\n      lead_status: lead.status || 'new',\n      intent: 'handoff',\n      fields_extracted: {},\n      missing_fields: [],\n      booking_request: {},\n      handoff_reason: 'Failed to parse AI response'\n    };\n    replyText = parsed.reply_text;\n  }\n}\n\n// Merge extracted fields with existing lead data\nconst fieldsExtracted = parsed.fields_extracted || {};\nconst updatedLead = { ...lead };\n\nObject.keys(fieldsExtracted).forEach(key => {\n  if (fieldsExtracted[key] !== null && fieldsExtracted[key] !== undefined) {\n    updatedLead[key] = fieldsExtracted[key];\n  }\n});\n\n// Update status\nupdatedLead.status = parsed.lead_status || lead.status;\nupdatedLead.last_message_at = new Date().toISOString();\n\n// Set follow-up if not booked\nif (parsed.lead_status !== 'booked' && parsed.lead_status !== 'unqualified' && parsed.lead_status !== 'handoff') {\n  updatedLead.next_followup_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();\n} else {\n  updatedLead.next_followup_at = null;\n}\n\nreturn [{\n  json: {\n    reply_text: replyText,\n    parsed_response: parsed,\n    lead: updatedLead,\n    config: config,\n    twilio_number: config.twilio_number\n  }\n}];"
+        "functionCode": "// Parse Claude's JSON response\nconst response = $json;\nconst prepData = $('Prepare Claude Request').item.json;\nconst config = prepData.config;\nconst lead = prepData.lead;\n\nlet parsed;\nlet replyText;\n\ntry {\n  const text = response.content[0].text;\n  // Try to parse as JSON\n  parsed = JSON.parse(text);\n  replyText = parsed.reply_text;\n} catch (e) {\n  // If JSON parsing fails, try to extract just the reply\n  try {\n    const text = response.content[0].text;\n    // Maybe Claude added extra text, try to find JSON\n    const jsonMatch = text.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      parsed = JSON.parse(jsonMatch[0]);\n      replyText = parsed.reply_text;\n    } else {\n      throw new Error('No JSON found');\n    }\n  } catch (e2) {\n    // Fallback\n    parsed = {\n      reply_text: 'Thanks for reaching out! Someone will get back to you shortly.',\n      lead_status: lead.status || 'new',\n      intent: 'handoff',\n      fields_extracted: {},\n      missing_fields: [],\n      booking_request: {},\n      handoff_reason: 'Failed to parse AI response'\n    };\n    replyText = parsed.reply_text;\n  }\n}\n\n// Merge extracted fields with existing lead data\nconst fieldsExtracted = parsed.fields_extracted || {};\nconst updatedLead = { ...lead };\n\nObject.keys(fieldsExtracted).forEach(key => {\n  if (fieldsExtracted[key] !== null && fieldsExtracted[key] !== undefined) {\n    updatedLead[key] = fieldsExtracted[key];\n  }\n});\n\n// Update status\nupdatedLead.status = parsed.lead_status || lead.status;\nupdatedLead.last_message_at = new Date().toISOString();\n\n// Set follow-up if not booked\nif (parsed.lead_status !== 'booked' && parsed.lead_status !== 'unqualified' && parsed.lead_status !== 'handoff') {\n  updatedLead.next_followup_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();\n} else {\n  updatedLead.next_followup_at = null;\n}\n\nreturn [{\n  json: {\n    reply_text: replyText,\n    parsed_response: parsed,\n    lead: updatedLead,\n    config: config,\n    twilio_number: config.twilio_number\n  }\n}];"
       },
       "name": "Parse Response",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [2450, 300]
+      "position": [2650, 300]
     },
     {
       "parameters": {
@@ -222,7 +237,7 @@
       "name": "Update Lead",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 2,
-      "position": [2650, 300]
+      "position": [2850, 300]
     },
     {
       "parameters": {
@@ -233,7 +248,7 @@
       "name": "Send SMS",
       "type": "n8n-nodes-base.twilio",
       "typeVersion": 1,
-      "position": [2850, 300]
+      "position": [3050, 300]
     },
     {
       "parameters": {
@@ -253,7 +268,7 @@
       "name": "Log Outbound",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 2,
-      "position": [3050, 300]
+      "position": [3250, 300]
     },
     {
       "parameters": {
@@ -269,7 +284,7 @@
       "name": "Needs Handoff?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [3250, 300]
+      "position": [3450, 300]
     },
     {
       "parameters": {
@@ -280,18 +295,21 @@
       "name": "Notify Owner",
       "type": "n8n-nodes-base.twilio",
       "typeVersion": 1,
-      "position": [3450, 200]
+      "position": [3650, 200]
     },
     {
       "parameters": {},
       "name": "Done",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [3450, 400]
+      "position": [3650, 400]
     }
   ],
   "connections": {
     "Webhook": {
+      "main": [[{ "node": "Save Webhook Data", "type": "main", "index": 0 }]]
+    },
+    "Save Webhook Data": {
       "main": [[{ "node": "Lookup Lead", "type": "main", "index": 0 }]]
     },
     "Lookup Lead": {
