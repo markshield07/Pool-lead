@@ -1,0 +1,16 @@
+{
+  "name": "leadpilot",
+  "version": "1.0.0",
+  "description": "SMS lead capture and qualification bot for pool cleaning businesses",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "googleapis": "^130.0.0",
+    "twilio": "^4.23.0",
+    "dotenv": "^16.3.1"
+  }
+}
