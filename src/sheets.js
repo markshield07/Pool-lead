@@ -22,7 +22,7 @@ class SheetsClient {
   async findLeadByPhone(phone) {
     const response = await this.sheets.spreadsheets.values.get({
       spreadsheetId: this.sheetId,
-      range: 'Leads!A:M',
+      range: 'Leads!A:N',
     });
 
     const rows = response.data.values || [];
@@ -58,12 +58,13 @@ class SheetsClient {
       lead.status || 'new',
       lead.last_message_at || new Date().toISOString(),
       lead.next_followup_at || '',
-      lead.notes || ''
+      lead.notes || '',
+      lead.source || 'sms'
     ];
 
     await this.sheets.spreadsheets.values.append({
       spreadsheetId: this.sheetId,
-      range: 'Leads!A:M',
+      range: 'Leads!A:N',
       valueInputOption: 'RAW',
       requestBody: { values: [row] },
     });
@@ -93,12 +94,13 @@ class SheetsClient {
       lead.status || 'new',
       lead.last_message_at || new Date().toISOString(),
       lead.next_followup_at || '',
-      lead.notes || ''
+      lead.notes || '',
+      lead.source || 'sms'
     ];
 
     await this.sheets.spreadsheets.values.update({
       spreadsheetId: this.sheetId,
-      range: `Leads!A${lead._rowIndex}:M${lead._rowIndex}`,
+      range: `Leads!A${lead._rowIndex}:N${lead._rowIndex}`,
       valueInputOption: 'RAW',
       requestBody: { values: [row] },
     });
