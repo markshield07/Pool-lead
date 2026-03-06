@@ -259,12 +259,8 @@ app.post('/webhook/goto-missed-call', async (req, res) => {
     // 3. Log as system-initiated outbound
     await sheets.logMessage(lead.lead_id, 'out', `[MISSED CALL AUTO-REPLY] ${greeting}`);
 
-    // 4. Send SMS via GoTo (or Twilio fallback)
-    if (goto.isConfigured() && config.use_goto_sms !== 'false') {
-      await goto.sendSMS(phone, greeting);
-    } else {
-      await twilio.sendSMS(phone, greeting);
-    }
+    // 4. Send SMS via Twilio
+    await twilio.sendSMS(phone, greeting);
 
     // 5. Set follow-up
     lead.last_message_at = new Date().toISOString();
@@ -276,94 +272,6 @@ app.post('/webhook/goto-missed-call', async (req, res) => {
 
   } catch (error) {
     console.error('Error processing missed call:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ============ GoTo SMS Webhook (for replies) ============
-app.post('/webhook/goto-sms', async (req, res) => {
-  console.log('\n=== GoTo Inbound SMS ===');
-
-  try {
-    // Extract from GoTo SMS webhook format
-    const phone = req.body.from || req.body.contactPhoneNumber;
-    const inboundText = req.body.body || req.body.text;
-
-    if (!phone || !inboundText) {
-      console.error('Missing phone or text in GoTo SMS webhook');
-      return res.status(400).json({ error: 'Missing phone or text' });
-    }
-
-    console.log(`From: ${phone}`);
-    console.log(`Message: ${inboundText}`);
-
-    // Same flow as Twilio SMS
-    let lead = await sheets.findLeadByPhone(phone);
-    let isNewLead = false;
-
-    if (!lead) {
-      isNewLead = true;
-      lead = {
-        lead_id: 'lead_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-        phone: phone,
-        name: null,
-        city: null,
-        address: null,
-        pool_type: null,
-        pool_size: null,
-        pool_condition: null,
-        service_type: null,
-        status: 'new',
-        last_message_at: new Date().toISOString(),
-        next_followup_at: null,
-        notes: null,
-        source: 'sms'
-      };
-      await sheets.createLead(lead);
-    }
-
-    await sheets.logMessage(lead.lead_id, 'in', inboundText);
-    const messages = await sheets.getMessageHistory(lead.lead_id);
-    const config = await sheets.getConfig();
-    const claudeResponse = await claude.getResponse(lead, messages, config, inboundText);
-
-    // Update lead
-    const fieldsExtracted = claudeResponse.fields_extracted || {};
-    Object.keys(fieldsExtracted).forEach(key => {
-      if (fieldsExtracted[key] !== null && fieldsExtracted[key] !== undefined) {
-        lead[key] = fieldsExtracted[key];
-      }
-    });
-    lead.status = claudeResponse.lead_status || lead.status;
-    lead.last_message_at = new Date().toISOString();
-
-    if (!['booked', 'unqualified', 'handoff'].includes(claudeResponse.lead_status)) {
-      lead.next_followup_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    } else {
-      lead.next_followup_at = null;
-    }
-
-    await sheets.updateLead(lead);
-
-    // Send reply via GoTo
-    const replyText = claudeResponse.reply_text;
-    if (goto.isConfigured() && config.use_goto_sms !== 'false') {
-      await goto.sendSMS(phone, replyText);
-    } else {
-      await twilio.sendSMS(phone, replyText);
-    }
-
-    await sheets.logMessage(lead.lead_id, 'out', replyText);
-
-    if (claudeResponse.intent === 'handoff') {
-      await twilio.notifyOwner(phone, claudeResponse.handoff_reason, inboundText, config);
-    }
-
-    console.log('=== Done ===\n');
-    res.status(200).json({ success: true });
-
-  } catch (error) {
-    console.error('Error processing GoTo SMS:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -461,18 +369,11 @@ async function start() {
     app.listen(PORT, () => {
       console.log(`\nLeadPilot server running on port ${PORT}`);
       console.log('\nEndpoints:');
-      console.log(`  Twilio SMS:      POST http://localhost:${PORT}/webhook/sms`);
+      console.log(`  Twilio SMS:       POST http://localhost:${PORT}/webhook/sms`);
       console.log(`  GoTo Missed Call: POST http://localhost:${PORT}/webhook/goto-missed-call`);
-      console.log(`  GoTo SMS:        POST http://localhost:${PORT}/webhook/goto-sms`);
-      console.log(`  Test SMS:        POST http://localhost:${PORT}/test/sms`);
+      console.log(`  Test SMS:         POST http://localhost:${PORT}/test/sms`);
       console.log(`  Test Missed Call: POST http://localhost:${PORT}/test/missed-call`);
-      console.log(`  Health:          GET  http://localhost:${PORT}/health\n`);
-
-      if (goto.isConfigured()) {
-        console.log('GoTo: Configured ✓');
-      } else {
-        console.log('GoTo: Not configured (set GOTO_CLIENT_ID and GOTO_CLIENT_SECRET)');
-      }
+      console.log(`  Health:           GET  http://localhost:${PORT}/health\n`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);
