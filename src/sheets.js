@@ -3,13 +3,27 @@ const { google } = require('googleapis');
 class SheetsClient {
   constructor() {
     this.sheets = null;
-    this.sheetId = process.env.GOOGLE_SHEET_ID;
+    this.sheetId = null;
   }
 
   async init() {
+    // Read env vars at init time (after dotenv has loaded)
+    this.sheetId = process.env.GOOGLE_SHEET_ID;
+    const serviceAccountPath = process.env.GOOGLE_SERVICE_ACCOUNT_PATH;
+
+    console.log('Sheet ID:', this.sheetId);
+    console.log('Service Account Path:', serviceAccountPath);
+
+    if (!this.sheetId) {
+      throw new Error('GOOGLE_SHEET_ID not set in environment');
+    }
+
     // Use service account credentials
+    const path = require('path');
+    const keyFile = path.join(__dirname, '..', serviceAccountPath.replace('./', ''));
+
     const auth = new google.auth.GoogleAuth({
-      keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_PATH,
+      keyFile: keyFile,
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
 
