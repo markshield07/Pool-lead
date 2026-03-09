@@ -1,7 +1,7 @@
-require('dotenv').config({ path: '../.env' });
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const express = require('express');
-const path = require('path');
 const sheets = require('./sheets');
 const claude = require('./claude');
 const twilio = require('./twilio');
