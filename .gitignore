@@ -1,6 +1,9 @@
 # Local workflow copies with credentials
 workflows/*-LOCAL.json
 
+# Service account credentials (NEVER commit)
+service-account.json
+
 # Environment files (keep .env.example, ignore actual .env)
 .env
 .env.local
