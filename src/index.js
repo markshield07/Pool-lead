@@ -6,6 +6,7 @@ const sheets = require('./sheets');
 const claude = require('./claude');
 const twilio = require('./twilio');
 const goto = require('./goto');
+const calendar = require('./calendar');
 
 const app = express();
 app.use(express.json());
@@ -364,10 +365,95 @@ app.post('/test/missed-call', async (req, res) => {
   }
 });
 
+// ============ Calendar Booking API ============
+
+// Get available time slots
+app.get('/api/slots', async (req, res) => {
+  try {
+    const slots = await calendar.getAvailableSlots();
+    res.json({
+      success: true,
+      slots: slots.map((s, i) => ({
+        index: i + 1,
+        display: s.display,
+        start: s.start.toISOString(),
+        end: s.end.toISOString(),
+      })),
+    });
+  } catch (error) {
+    console.error('Error getting slots:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Book an appointment
+app.post('/api/book', async (req, res) => {
+  console.log('\n=== Booking Request ===');
+
+  try {
+    const { phone, slot_index } = req.body;
+
+    if (!phone || slot_index === undefined) {
+      return res.status(400).json({ error: 'Missing phone or slot_index' });
+    }
+
+    // Find the lead
+    const lead = await sheets.findLeadByPhone(phone);
+    if (!lead) {
+      return res.status(404).json({ error: 'Lead not found' });
+    }
+
+    // Get available slots and pick the one requested
+    const slots = await calendar.getAvailableSlots();
+    const selectedSlot = slots[slot_index - 1];
+
+    if (!selectedSlot) {
+      return res.status(400).json({ error: 'Invalid slot_index' });
+    }
+
+    // Get config for timezone
+    const config = await sheets.getConfig();
+
+    // Create the calendar event
+    const booking = await calendar.createBooking(lead, selectedSlot, config);
+
+    // Update lead status
+    lead.status = 'booked';
+    lead.next_followup_at = null;
+    lead.notes = (lead.notes || '') + ` | Booked: ${selectedSlot.display}`;
+    await sheets.updateLead(lead);
+
+    // Send confirmation SMS
+    const confirmMsg = `You're all set! We've scheduled you for ${selectedSlot.display}. You'll get a reminder before the visit.`;
+    await twilio.sendSMS(phone, confirmMsg);
+    await sheets.logMessage(lead.lead_id, 'out', confirmMsg);
+
+    // Notify owner
+    await twilio.notifyOwner(phone, 'New booking', `Booked for ${selectedSlot.display}`, config);
+
+    console.log(`Booked ${phone} for ${selectedSlot.display}`);
+
+    res.json({
+      success: true,
+      booking: {
+        id: booking.id,
+        slot: selectedSlot.display,
+        start: booking.start,
+        end: booking.end,
+      },
+    });
+
+  } catch (error) {
+    console.error('Error booking:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Start server
 async function start() {
   try {
     await sheets.init();
+    await calendar.init();
     twilio.init();
 
     app.listen(PORT, () => {
@@ -377,6 +463,8 @@ async function start() {
       console.log(`  GoTo Missed Call: POST http://localhost:${PORT}/webhook/goto-missed-call`);
       console.log(`  Test SMS:         POST http://localhost:${PORT}/test/sms`);
       console.log(`  Test Missed Call: POST http://localhost:${PORT}/test/missed-call`);
+      console.log(`  Get Slots:        GET  http://localhost:${PORT}/api/slots`);
+      console.log(`  Book Appointment: POST http://localhost:${PORT}/api/book`);
       console.log(`  Health:           GET  http://localhost:${PORT}/health\n`);
     });
   } catch (error) {
