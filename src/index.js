@@ -1,6 +1,7 @@
 require('dotenv').config({ path: '../.env' });
 
 const express = require('express');
+const path = require('path');
 const sheets = require('./sheets');
 const claude = require('./claude');
 const twilio = require('./twilio');
@@ -9,6 +10,9 @@ const goto = require('./goto');
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static files (privacy policy, terms, etc.)
+app.use(express.static(path.join(__dirname, '../public')));
 
 const PORT = process.env.PORT || 3000;
 
