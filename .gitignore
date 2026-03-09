@@ -8,3 +8,6 @@ workflows/*-LOCAL.json
 
 # Don't ignore .env.example - it's a template
 !.env.example
+
+# Node
+node_modules/
