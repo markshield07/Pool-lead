@@ -39,6 +39,20 @@ This is NOT a chatbot or FAQ bot. This is a **revenue agent** whose only job is 
 - **Book** jobs on the calendar
 - **Follow up** consistently
 
+## Implementation Roadmap
+
+### Phase 1: MVP (Start Here)
+
+1. **After-hours answering only** — Lower risk, immediate value
+2. **Simple flow**: Greet → Qualify → Book or take message
+3. **SMS for confirmations and follow-ups**
+
+### Phase 2: Expansion
+
+- **All-hours reception** — Handle calls during business hours too
+- **Outbound reminder calls** — Appointment reminders via voice
+- **Multi-business support** — White-label for multiple pool companies
+
 ## Tech Stack
 
 | Component | Tool | Purpose |
